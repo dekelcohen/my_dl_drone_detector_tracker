@@ -1,6 +1,6 @@
 """
 Usage:
-python train_tib_net.py --dataset_dir /path/to/TIB_NET_uav --model yolo26s.pt --imgsz 1080 --batch_size -1 --epochs 50
+python train_tib_net.py --dataset_dir /path/to/TIB_NET_uav --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50
 """
 
 import os
@@ -17,17 +17,17 @@ def parse_args():
                         help='Path to the root of TIB_NET_uav (contains Annotations/ and JPEGImages/)')
     parser.add_argument('--output_dir', type=str, default='./yolo_dataset', 
                         help='Directory where the YOLO format dataset will be generated')
+    
+    # --- NEW ARGUMENT: Dataset Recreation ---
+    parser.add_argument('--recreate_dataset', action='store_true', 
+                        help='Force recreation of the YOLO dataset if it already exists (default: False)')
+    
     parser.add_argument('--test_split', type=float, default=0.1, 
                         help='Fraction of the dataset to be used for testing/validation (default: 0.1)')
-    
-    # Updated to YOLO26 Nano by default
     parser.add_argument('--model', type=str, default='yolo26n.pt', 
                         help='Ultralytics YOLO model version to use (default: yolo26n.pt for Nano)')
-    
     parser.add_argument('--epochs', type=int, default=50, 
                         help='Number of training epochs')
-    
-    # Increased default resolution for small objects
     parser.add_argument('--imgsz', type=int, default=1080, 
                         help='Image resolution for training (high res recommended for 500m drones)')
     parser.add_argument('--batch_size', type=int, default=-1, 
@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.01, 
                         help='Initial learning rate (default: 0.01)')
     parser.add_argument('--optimizer', type=str, default='auto', choices=['auto', 'SGD', 'Adam', 'AdamW', 'MuSGD'],
-                        help='Optimizer to use (YOLO26 supports MuSGD. auto will pick best)')
+                        help='Optimizer to use (auto will pick best)')
     parser.add_argument('--save_period', type=int, default=-1, 
                         help='Save checkpoint every x epochs (default: -1, only saves best/last)')
     
@@ -136,9 +136,21 @@ names: {classes}
 def main():
     args = parse_args()
     
-    print("--- Step 1: Preparing Dataset ---")
-    yaml_path = prepare_dataset(args.dataset_dir, args.output_dir, args.test_split)
-    print(f"Data configuration saved to: {yaml_path}")
+    # Check if dataset already exists
+    expected_yaml = os.path.join(args.output_dir, 'data.yaml')
+    
+    if os.path.exists(expected_yaml) and not args.recreate_dataset:
+        print(f"--- Step 1: Dataset already exists at '{args.output_dir}' ---")
+        print("Skipping dataset generation. (Use --recreate_dataset to force rebuilding)")
+        yaml_path = expected_yaml
+    else:
+        print("--- Step 1: Preparing Dataset ---")
+        if os.path.exists(args.output_dir):
+            print(f"Cleaning up existing directory: {args.output_dir}...")
+            shutil.rmtree(args.output_dir)
+            
+        yaml_path = prepare_dataset(args.dataset_dir, args.output_dir, args.test_split)
+        print(f"Data configuration saved to: {yaml_path}")
     
     print(f"\n--- Step 2: Initializing YOLO26 Model ({args.model}) ---")
     model = YOLO(args.model)
