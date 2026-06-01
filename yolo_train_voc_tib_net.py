@@ -10,7 +10,7 @@ python -m zipfile -e uav-20260530T222902Z-3-001.zip .
 python yolo_train_voc_tib_net.py --dataset_dir ./data/uav --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50     
 
 # Run prediction only using a trained model
-python yolo_train_voc_tib_net.py --predict ./data/uav/JPEGImages/sample.jpg --model ./TIB_NET_UAV/yolo26_train/weights/best.pt --output-overlay ./output_overlay.jpg --predict-threshold 0.5
+python yolo_train_voc_tib_net.py --predict ./data/uav/JPEGImages/sample.jpg --model ./runs/detect/TIB_NET_UAV/yolo26_train/weights/best.pt --output-overlay ./predict_result_yolo.jpg --predict-threshold 0.5
 """
 
 import os
