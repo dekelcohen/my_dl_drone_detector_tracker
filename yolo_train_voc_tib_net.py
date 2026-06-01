@@ -1,6 +1,13 @@
 """
 Usage:
-python train_tib_net.py --dataset_dir /path/to/TIB_NET_uav --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50
+# Download TIB NET dataset from github releases 
+mkdir data
+cd data
+wget https://github.com/dekelcohen/my_dl_drone_detector_tracker/releases/download/dataset_tag/uav-20260530T222902Z-3-001.zip
+python -m zipfile -e uav-20260530T222902Z-3-001.zip .
+
+# Train and Eval    
+python yolo_train_voc_tib_net.py --dataset_dir ./data/uav --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50     
 """
 
 import os
