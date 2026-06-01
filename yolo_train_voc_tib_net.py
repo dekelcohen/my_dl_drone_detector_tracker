@@ -166,7 +166,7 @@ def predict(model_path, image_path, output_path, conf_threshold):
     # Process the prediction results (expecting one result since source is a single image)
     for result in results:
         # result.plot() handles drawing bboxes and confidence labels automatically
-        annotated_img = result.plot(conf=True)
+        annotated_img = result.plot(conf=True, line_width=2)
         
         # Determine output file path
         if not output_path:
