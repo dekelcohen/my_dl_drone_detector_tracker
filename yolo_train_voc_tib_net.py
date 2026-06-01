@@ -8,6 +8,9 @@ python -m zipfile -e uav-20260530T222902Z-3-001.zip .
 
 # Train and Eval    
 python yolo_train_voc_tib_net.py --dataset_dir ./data/uav --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50     
+
+# Run prediction only using a trained model
+python yolo_train_voc_tib_net.py --predict ./data/uav/JPEGImages/sample.jpg --model ./TIB_NET_UAV/yolo26_train/weights/best.pt --output-overlay ./output_overlay.jpg --predict-threshold 0.5
 """
 
 import os
@@ -16,23 +19,26 @@ import shutil
 import random
 import argparse
 import xml.etree.ElementTree as ET
+import cv2
 from ultralytics import YOLO
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train Ultralytics YOLO26 on TIB-Net UAV dataset")
-    parser.add_argument('--dataset_dir', type=str, required=True, 
+    parser = argparse.ArgumentParser(description="Train Ultralytics YOLO26 on TIB-Net UAV dataset or run prediction")
+    
+    # --- Modified dataset_dir to be optional to support inference-only execution ---
+    parser.add_argument('--dataset_dir', type=str, default=None, 
                         help='Path to the root of TIB_NET_uav (contains Annotations/ and JPEGImages/)')
     parser.add_argument('--output_dir', type=str, default='./yolo_dataset', 
                         help='Directory where the YOLO format dataset will be generated')
     
-    # --- NEW ARGUMENT: Dataset Recreation ---
+    # --- Dataset Recreation ---
     parser.add_argument('--recreate_dataset', action='store_true', 
                         help='Force recreation of the YOLO dataset if it already exists (default: False)')
     
     parser.add_argument('--test_split', type=float, default=0.1, 
                         help='Fraction of the dataset to be used for testing/validation (default: 0.1)')
     parser.add_argument('--model', type=str, default='yolo26n.pt', 
-                        help='Ultralytics YOLO model version to use (default: yolo26n.pt for Nano)')
+                        help='Ultralytics YOLO model version or local path to weights (default: yolo26n.pt)')
     parser.add_argument('--epochs', type=int, default=50, 
                         help='Number of training epochs')
     parser.add_argument('--imgsz', type=int, default=1080, 
@@ -45,6 +51,14 @@ def parse_args():
                         help='Optimizer to use (auto will pick best)')
     parser.add_argument('--save_period', type=int, default=-1, 
                         help='Save checkpoint every x epochs (default: -1, only saves best/last)')
+    
+    # --- NEW ARGUMENTS: Prediction / Inference ---
+    parser.add_argument('--predict', type=str, default=None,
+                        help='Path to an image to run prediction on')
+    parser.add_argument('--output-overlay', type=str, default=None,
+                        help='Path to save the annotated output image with predicted bboxes')
+    parser.add_argument('--predict-threshold', type=float, default=0.25,
+                        help='Confidence threshold to display and annotate detections (default: 0.25)')
     
     return parser.parse_args()
 
@@ -140,50 +154,100 @@ names: {classes}
         
     return yaml_path
 
+def predict(model_path, image_path, output_path, conf_threshold):
+    """Loads a YOLO model, runs prediction on the target image, and saves the overlay."""
+    print(f"\n--- Running Prediction ---")
+    print(f"Loading model: {model_path}")
+    model = YOLO(model_path)
+    
+    print(f"Running inference on image: {image_path} (Confidence threshold: {conf_threshold})")
+    results = model.predict(source=image_path, conf=conf_threshold)
+    
+    # Process the prediction results (expecting one result since source is a single image)
+    for result in results:
+        # result.plot() handles drawing bboxes and confidence labels automatically
+        annotated_img = result.plot(conf=True)
+        
+        # Determine output file path
+        if not output_path:
+            base, ext = os.path.splitext(image_path)
+            output_file = f"{base}_overlay{ext}"
+        else:
+            output_file = output_path
+            
+        # Ensure output directory exists
+        out_dir = os.path.dirname(output_file)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+            
+        cv2.imwrite(output_file, annotated_img)
+        print(f"Successfully saved annotated overlay image to: {output_file}")
+
 def main():
     args = parse_args()
     
-    # Check if dataset already exists
-    expected_yaml = os.path.join(args.output_dir, 'data.yaml')
+    # Validation check: Ensure at least one primary path is designated
+    if not args.dataset_dir and not args.predict:
+        print("Error: You must provide either --dataset_dir (for training/evaluation) or --predict (for inference).")
+        return
+
+    # Track active model path for post-training inference
+    active_model_path = args.model
     
-    if os.path.exists(expected_yaml) and not args.recreate_dataset:
-        print(f"--- Step 1: Dataset already exists at '{args.output_dir}' ---")
-        print("Skipping dataset generation. (Use --recreate_dataset to force rebuilding)")
-        yaml_path = expected_yaml
-    else:
-        print("--- Step 1: Preparing Dataset ---")
-        if os.path.exists(args.output_dir):
-            print(f"Cleaning up existing directory: {args.output_dir}...")
-            shutil.rmtree(args.output_dir)
-            
-        yaml_path = prepare_dataset(args.dataset_dir, args.output_dir, args.test_split)
-        print(f"Data configuration saved to: {yaml_path}")
+    if args.dataset_dir:
+        # Check if dataset already exists
+        expected_yaml = os.path.join(args.output_dir, 'data.yaml')
+        
+        if os.path.exists(expected_yaml) and not args.recreate_dataset:
+            print(f"--- Step 1: Dataset already exists at '{args.output_dir}' ---")
+            print("Skipping dataset generation. (Use --recreate_dataset to force rebuilding)")
+            yaml_path = expected_yaml
+        else:
+            print("--- Step 1: Preparing Dataset ---")
+            if os.path.exists(args.output_dir):
+                print(f"Cleaning up existing directory: {args.output_dir}...")
+                shutil.rmtree(args.output_dir)
+                
+            yaml_path = prepare_dataset(args.dataset_dir, args.output_dir, args.test_split)
+            print(f"Data configuration saved to: {yaml_path}")
+        
+        print(f"\n--- Step 2: Initializing YOLO26 Model ({args.model}) ---")
+        model = YOLO(args.model)
+        
+        print("\n--- Step 3: Training Model ---")
+        model.train(
+            data=yaml_path,
+            epochs=args.epochs,
+            imgsz=args.imgsz,
+            batch=args.batch_size,     
+            lr0=args.lr,               
+            optimizer=args.optimizer,  
+            save_period=args.save_period, 
+            val=True,                  
+            project='TIB_NET_UAV',
+            name='yolo26_train',
+            exist_ok=True
+        )
+        
+        # Post-training, we direct inference to use the newly trained best weights
+        active_model_path = os.path.join('TIB_NET_UAV', 'yolo26_train', 'weights', 'best.pt')
+        
+        print("\n--- Step 4: Evaluating Model on Test Set ---")
+        metrics = model.val(data=yaml_path)
+        
+        print("\n--- Evaluation Metrics ---")
+        print(f"mAP@50-95: {metrics.box.map:.4f}")
+        print(f"mAP@50:    {metrics.box.map50:.4f}")
+        print(f"mAP@75:    {metrics.box.map75:.4f}")
     
-    print(f"\n--- Step 2: Initializing YOLO26 Model ({args.model}) ---")
-    model = YOLO(args.model)
-    
-    print("\n--- Step 3: Training Model ---")
-    model.train(
-        data=yaml_path,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch_size,     
-        lr0=args.lr,               
-        optimizer=args.optimizer,  
-        save_period=args.save_period, 
-        val=True,                  
-        project='TIB_NET_UAV',
-        name='yolo26_train',
-        exist_ok=True
-    )
-    
-    print("\n--- Step 4: Evaluating Model on Test Set ---")
-    metrics = model.val(data=yaml_path)
-    
-    print("\n--- Evaluation Metrics ---")
-    print(f"mAP@50-95: {metrics.box.map:.4f}")
-    print(f"mAP@50:    {metrics.box.map50:.4f}")
-    print(f"mAP@75:    {metrics.box.map75:.4f}")
+    # --- Step 5: Inference Execution ---
+    if args.predict:
+        predict(
+            model_path=active_model_path,
+            image_path=args.predict,
+            output_path=args.output_overlay,
+            conf_threshold=args.predict_threshold
+        )
 
 if __name__ == '__main__':
     main()
