@@ -3,6 +3,9 @@ Usage:
 # Train and Eval    
 python train_yolo.py --data_yaml ./yolo_dataset/data.yaml --model yolo26s.pt --imgsz 1920 --batch_size -1 --epochs 50 --random_seed 42    
 
+# Run evaluation/validation ONLY on an existing model
+python train_yolo.py --data_yaml ./yolo_dataset/data.yaml --model ./runs/detect/TIB_NET_UAV/yolo26_train/weights/best.pt --val
+
 # Run prediction only using a trained model
 python train_yolo.py --predict ./data/uav/JPEGImages/sample.jpg --model ./runs/detect/TIB_NET_UAV/yolo26_train/weights/best.pt --output-overlay ./predict_result_yolo.jpg --predict-threshold 0.5
 """
@@ -14,13 +17,15 @@ import random
 from ultralytics import YOLO
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train Ultralytics YOLO26 or run prediction")
+    parser = argparse.ArgumentParser(description="Train, Validate, or Predict using Ultralytics YOLO26")
     
-    # --- Training parameters ---
+    # --- Training/Validation parameters ---
     parser.add_argument('--data_yaml', type=str, default=None, 
                         help='Path to the YOLO data.yaml configuration file (e.g., ./yolo_dataset/data.yaml)')
     parser.add_argument('--model', type=str, default='yolo26n.pt', 
                         help='Ultralytics YOLO model version or local path to weights (default: yolo26n.pt)')
+    parser.add_argument('--val', action='store_true',
+                        help='Run validation only on the dataset provided in --data_yaml (skips training)')
     parser.add_argument('--epochs', type=int, default=50, 
                         help='Number of training epochs')
     parser.add_argument('--imgsz', type=int, default=1080, 
@@ -93,26 +98,30 @@ def main():
         print(f"\n--- Initializing YOLO Model ({args.model}) ---")
         model = YOLO(args.model)
         
-        print(f"\n--- Training Model (Seed: {args.random_seed}) ---")
-        model.train(
-            data=args.data_yaml,
-            epochs=args.epochs,
-            imgsz=args.imgsz,
-            batch=args.batch_size,     
-            lr0=args.lr,               
-            optimizer=args.optimizer,  
-            save_period=args.save_period, 
-            seed=args.random_seed,     # Pass seed natively to ultralytics
-            val=True,                  
-            project='TIB_NET_UAV',
-            name='yolo26_train',
-            exist_ok=True
-        )
-        
-        # Post-training, we direct inference to use the newly trained best weights
-        active_model_path = os.path.join('TIB_NET_UAV', 'yolo26_train', 'weights', 'best.pt')
-        
-        print("\n--- Evaluating Model on Test Set ---")
+        # Skip training if --val flag is provided
+        if not args.val:
+            print(f"\n--- Training Model (Seed: {args.random_seed}) ---")
+            model.train(
+                data=args.data_yaml,
+                epochs=args.epochs,
+                imgsz=args.imgsz,
+                batch=args.batch_size,     
+                lr0=args.lr,               
+                optimizer=args.optimizer,  
+                save_period=args.save_period, 
+                seed=args.random_seed,     # Pass seed natively to ultralytics
+                val=True,                  
+                project='TIB_NET_UAV',
+                name='yolo26_train',
+                exist_ok=True
+            )
+            
+            # Post-training, we direct inference to use the newly trained best weights
+            active_model_path = os.path.join('TIB_NET_UAV', 'yolo26_train', 'weights', 'best.pt')
+        else:
+            print("\n--- Skipping Training (Validation Only Mode) ---")
+            
+        print("\n--- Evaluating Model on Validation Set ---")
         metrics = model.val(data=args.data_yaml)
         
         print("\n--- Evaluation Metrics ---")
