@@ -1,6 +1,6 @@
 """
 Usage: 
-python prepare_fred_dataset_to_yolo.py --dataset_dir "E:\Vision\Drones\data\Datasets\FRED" --output_dir ./fred_yolo_small_bboxes --max_area 60.0 --num_samples 2000
+python prepare_fred_dataset_to_yolo.py --dataset_dir /data/repos/FRED/FRED_HF/train --output_dir ./data/fred_yolo_small_bboxes --max_area 60.0 --num_samples 2000
 """
 
 import os
