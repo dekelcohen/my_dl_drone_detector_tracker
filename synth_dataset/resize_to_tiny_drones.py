@@ -7,7 +7,10 @@ sensor noise, and JPEG compression to realistically simulate a tiny distant dron
 
 Usage Examples:
 
-python synth_dataset\resize_to_tiny_drones.py --bg_img ..\data\drone_crops\bk_tree.png --drone_img outputs\rendered_drones\render_0007.png  --x 200 --y 20 --scale 25 --quality 90 --out_img outputs\resize_drone_bk_tree.png
+
+python synth_dataset\resize_to_tiny_drones.py --bg_img ..\data\drone_crops\bk_tree.png --drone_img outputs\rendered_drones\render_0007.png  --x 200 --y 20 --scale 25 --quality 100 --out_img outputs\resize_drone_bk_tree.png
+
+# Note: if --quality < 100 ring of bright almost transparent pixels artifacts around the drone -  jpeg compression artifacts 
 
 1. Basic usage with random placement (great for testing):
    python resize_to_tiny_drones.py --bg_img sky.jpg --drone_img drone.png --random_pos
@@ -141,9 +144,13 @@ def generate_realistic_tiny_drone(bg_img, hr_drone, hr_drone_alpha, center_x, ce
         gauss = np.random.normal(0, 0.001, noisy.shape)
         final_img = np.clip(np.round((noisy + gauss) * 255.0), 0, 255).astype(np.uint8)
         
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
-    _, encimg = cv2.imencode('.jpg', final_img, encode_param)
-    final_output = cv2.imdecode(encimg, 1)
+    # ONLY apply JPEG degradation if quality is less than 100
+    if jpeg_quality < 100:
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
+        _, encimg = cv2.imencode('.jpg', final_img, encode_param)
+        final_output = cv2.imdecode(encimg, 1)
+    else:
+        final_output = final_img # Skip JPEG simulation completely
     
     # Return tight bounding box of the inserted object for YOLO
     bbox_w = bg_x2 - bg_x1
